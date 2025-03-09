@@ -5,19 +5,43 @@ from config import API_BASE_URL, ENDPOINTS, DB_PATH
 
 
 def fetch_brands():
-    """API'den araç markalarını çeker ve slug + name olarak döndürür."""
+    """
+    API'den marka listesini çeker.
+    Dönen JSON yapısı şu şekildedir:
+    {
+      "result": {
+        "data": [
+          { "slug": "acura", "name": "Acura", ... },
+          ...
+        ],
+        "meta": { "count": ... }
+      },
+      ...
+    }
+    Bu nedenle 'data["result"]["data"]' üzerinden listeye ulaşıyoruz.
+    """
     url = API_BASE_URL + ENDPOINTS["brands"]
+    print("DEBUG URL:", url)
+
     response = requests.get(url)
+    print("DEBUG Status:", response.status_code)
+    print("DEBUG Body:", response.text)  # Yanıtın ham halini inceleyelim
 
     if response.status_code == 200:
         try:
             data = response.json()
-            if "result" in data:
-                brands = [{"name": brand["name"], "slug": brand["slug"]} for brand in data["result"]]
+            print("DEBUG JSON:", data)  # Parse edilen JSON
+            if "result" in data and "data" in data["result"]:
+                # Burada brand_list, "data" anahtarındaki gerçek marka listesi
+                brand_list = data["result"]["data"]
+                brands = [
+                    {"name": brand["name"], "slug": brand["slug"]}
+                    for brand in brand_list
+                ]
                 print(f"{len(brands)} marka bulundu.")
                 return brands
             else:
-                print("API yanıtında 'result' alanı bulunamadı.")
+                print("API yanıtında 'result.data' alanı bulunamadı:", data)
                 return []
         except ValueError:
             print("JSON formatında bir yanıt alınamadı!")
@@ -28,7 +52,11 @@ def fetch_brands():
 
 
 def fetch_models(brand_slug, retries=3):
-    """Belirtilen marka için modelleri çeker ve hem name hem slug olarak saklar."""
+    """
+    Belirtilen marka için modelleri çeker ve hem name hem slug olarak saklar.
+    Bu fonksiyon da benzer bir JSON yapısı bekliyorsa,
+    "result" -> "data" yapısını kontrol etmeliyiz.
+    """
     url = API_BASE_URL + ENDPOINTS["brands"] + f"?make={brand_slug}"
 
     for attempt in range(retries):
@@ -37,18 +65,23 @@ def fetch_models(brand_slug, retries=3):
         if response.status_code == 200:
             try:
                 data = response.json()
-                if "result" in data:
-                    models = [{"name": model["name"], "slug": model["slug"]} for model in data["result"]]
+                # Kontrol edelim: "result" var mı, içinde "data" var mı?
+                if "result" in data and "data" in data["result"]:
+                    model_list = data["result"]["data"]
+                    models = [
+                        {"name": model["name"], "slug": model["slug"]}
+                        for model in model_list
+                    ]
                     print(f"{brand_slug} için {len(models)} model bulundu.")
                     return models
                 else:
-                    print(f"{brand_slug} için API yanıtında 'result' alanı bulunamadı.")
+                    print(f"{brand_slug} için API yanıtında 'result.data' alanı bulunamadı.")
                     return []
             except ValueError:
-                print(f"{brand_slug} için JSON formatında bir yanıt alınamadı!")
+                print(f"{brand_slug} için JSON parse hatası!")
                 return []
         elif response.status_code == 429:
-            wait_time = (attempt + 1) * 2  # İlk deneme 2sn, ikinci 4sn, üçüncü 6sn bekler.
+            wait_time = (attempt + 1) * 2  # İlk deneme 2sn, ikinci 4sn, üçüncü 6sn bekler
             print(f"{brand_slug} için HTTP 429 hatası! {wait_time} saniye bekleniyor...")
             time.sleep(wait_time)
         else:
@@ -60,7 +93,13 @@ def fetch_models(brand_slug, retries=3):
 
 
 def save_to_database(brand_models):
-    """Tüm markaları ve modelleri tek seferde veritabanına kaydeder."""
+    """
+    Tüm markaları ve modelleri tek seferde veritabanına kaydeder.
+    brand_models = [
+      { "name": "...", "slug": "...", "models": [ {"name": "...", "slug": "..."}, ... ] },
+      ...
+    ]
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -89,9 +128,12 @@ def save_to_database(brand_models):
         brand_slug = brand_info["slug"]
         models = brand_info["models"]
 
-        # Markayı veritabanına ekle
-        cursor.execute("INSERT OR IGNORE INTO brands (name, slug) VALUES (?, ?)", (brand_name, brand_slug))
-        brand_id = cursor.execute("SELECT id FROM brands WHERE slug = ?", (brand_slug,)).fetchone()[0]
+        # Markayı veritabanına ekle (yoksa ekler, varsa atlar)
+        cursor.execute("INSERT OR IGNORE INTO brands (name, slug) VALUES (?, ?)",
+                       (brand_name, brand_slug))
+        # Ekledikten sonra brand_id'yi al
+        brand_id = cursor.execute("SELECT id FROM brands WHERE slug = ?",
+                                  (brand_slug,)).fetchone()[0]
 
         # Modelleri veritabanına ekle
         for model in models:
@@ -100,7 +142,7 @@ def save_to_database(brand_models):
 
     conn.commit()
     conn.close()
-    print(f"Tüm markalar ve modeller başarıyla veritabanına kaydedildi!")
+    print("Tüm markalar ve modeller başarıyla veritabanına kaydedildi!")
 
 
 def main():
