@@ -23,11 +23,26 @@ class TestFetchTrims(unittest.TestCase):
         """✅ API başarılı yanıt dönerse trimlerin düzgün çekildiğini test eder"""
         mock_response = MagicMock()
         mock_response.status_code = 200
+        # Kod "result" -> "data" şeklinde bir sözlük ve liste bekliyor
         mock_response.json.return_value = {
-            "result": [
-                {"slug": "test-trim-1", "name": "Trim 1", "generation": "Gen 1", "production_start_year": 2020, "production_end_year": 2022},
-                {"slug": "test-trim-2", "name": "Trim 2", "generation": "Gen 2", "production_start_year": 2018, "production_end_year": 2021}
-            ]
+            "result": {
+                "data": [
+                    {
+                        "slug": "test-trim-1",
+                        "name": "Trim 1",
+                        "generation": "Gen 1",
+                        "production_start_year": 2020,
+                        "production_end_year": 2022
+                    },
+                    {
+                        "slug": "test-trim-2",
+                        "name": "Trim 2",
+                        "generation": "Gen 2",
+                        "production_start_year": 2018,
+                        "production_end_year": 2021
+                    }
+                ]
+            }
         }
         mock_get.return_value = mock_response
 
@@ -42,6 +57,8 @@ class TestFetchTrims(unittest.TestCase):
         """❌ API 400 hatası dönerse programın kapandığını ve progress.json dosyasına yazıldığını test eder"""
         mock_response = MagicMock()
         mock_response.status_code = 400
+        # JSON içeriği önemli değil, 400 hatasında kod exit(1) yapıyor
+        mock_response.json.return_value = {}
         mock_get.return_value = mock_response
 
         with self.assertRaises(SystemExit) as cm:
@@ -69,7 +86,20 @@ class TestFetchTrims(unittest.TestCase):
 
         mock_response_200 = MagicMock()
         mock_response_200.status_code = 200
-        mock_response_200.json.return_value = {"result": [{"slug": "test-trim-3", "name": "Trim 3", "generation": "Gen 3", "production_start_year": 2019, "production_end_year": 2023}]}
+        # Başarılı yanıtta yine "result": { "data": [...] } formatı
+        mock_response_200.json.return_value = {
+            "result": {
+                "data": [
+                    {
+                        "slug": "test-trim-3",
+                        "name": "Trim 3",
+                        "generation": "Gen 3",
+                        "production_start_year": 2019,
+                        "production_end_year": 2023
+                    }
+                ]
+            }
+        }
 
         # İlk çağrıda 429 hatası, ikinci çağrıda 200 yanıtı
         mock_get.side_effect = [mock_response_429, mock_response_200]
@@ -84,6 +114,8 @@ class TestFetchTrims(unittest.TestCase):
         """❌ API 500 hatası dönerse belirli bir tekrar denemesinden sonra hata verdiğini test eder"""
         mock_response = MagicMock()
         mock_response.status_code = 500
+        # JSON içeriği önemli değil, 500'de kod boş liste dönüyor
+        mock_response.json.return_value = {}
         mock_get.return_value = mock_response
 
         trims = fetch_trims("test-brand", "test-model", "2021")
